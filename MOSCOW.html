@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MoSCoW Board — Local-save, Drag & Drop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .column { min-height: 260px; }
+    .card { transition: box-shadow .12s, transform .12s; }
+    .card:active { transform: translateY(2px); }
+    .drag-over { outline: 3px dashed rgba(59,130,246,0.35); }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen p-6 font-sans">
+  <div class="max-w-6xl mx-auto">
+    <header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-extrabold text-slate-800">MoSCoW Prioritization Board</h1>
+      </div>
+      <!-- 🔹 Project selector -->
+      <div class="flex gap-2 items-center">
+        <select id="projectSelect" class="p-2 border rounded-lg shadow-sm"></select>
+        <button id="newProjectBtn" class="px-3 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700">+ New Project</button>
+      </div>
+    </header>
+
+    <section class="mb-4 flex gap-3 items-start">
+      <input id="featureInput" class="flex-1 p-3 rounded-lg border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300" placeholder="Add a new feature/task..." />
+      <button id="addBtn" class="px-4 py-2 bg-sky-600 text-white rounded-lg shadow hover:bg-sky-700">Add Feature</button>
+      <button id="clearBtn" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg shadow">Clear</button>
+      <button id="exportBtn" class="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow">Export</button>
+      <button id="importBtn" class="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow">Import</button>
+    </section>
+
+    <main class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="column p-4 rounded-2xl bg-white shadow flex flex-col" data-category="Must Have">
+        <h2 class="text-lg font-semibold mb-3">Must Have</h2>
+        <div class="space-y-2 flex-1" aria-live="polite"></div>
+      </div>
+      <div class="column p-4 rounded-2xl bg-white shadow flex flex-col" data-category="Should Have">
+        <h2 class="text-lg font-semibold mb-3">Should Have</h2>
+        <div class="space-y-2 flex-1" aria-live="polite"></div>
+      </div>
+      <div class="column p-4 rounded-2xl bg-white shadow flex flex-col" data-category="Could Have">
+        <h2 class="text-lg font-semibold mb-3">Could Have</h2>
+        <div class="space-y-2 flex-1" aria-live="polite"></div>
+      </div>
+      <div class="column p-4 rounded-2xl bg-white shadow flex flex-col" data-category="Won't Have">
+        <h2 class="text-lg font-semibold mb-3">Won't Have</h2>
+        <div class="space-y-2 flex-1" aria-live="polite"></div>
+      </div>
+    </main>
+
+    <footer class="mt-6 text-sm text-slate-600">Saved to browser: <span id="saveStatus">—</span></footer>
+  </div>
+
+  <script>
+    // --- Project Management Layer 🔹 ---
+    const PROJECTS_KEY = 'moscow_projects';
+    let projects = JSON.parse(localStorage.getItem(PROJECTS_KEY)) || ['Default Project'];
+    let currentProject = projects[0];
+
+    function saveProjects() {
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+    }
+
+    function getStorageKey(project) {
+      return `moscow_board_${project}`;
+    }
+
+    function populateProjectSelect() {
+      const select = document.getElementById('projectSelect');
+      select.innerHTML = '';
+      projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if (p === currentProject) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    document.getElementById('projectSelect').addEventListener('change', (e) => {
+      currentProject = e.target.value;
+      board = loadData();
+      render();
+    });
+
+    document.getElementById('newProjectBtn').addEventListener('click', () => {
+      const name = prompt('Enter new project name:');
+      if (!name) return;
+      if (projects.includes(name)) return alert('Project already exists!');
+      projects.push(name);
+      currentProject = name;
+      saveProjects();
+      populateProjectSelect();
+      board = structuredClone(defaultData);
+      render();
+    });
+
+    // --- Data Layer ---
+    const defaultData = {
+      "Must Have": [],
+      "Should Have": [],
+      "Could Have": [],
+      "Won't Have": []
+    };
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(getStorageKey(currentProject));
+        if (!raw) return structuredClone(defaultData);
+        return JSON.parse(raw);
+      } catch (e) {
+        console.error('Failed to load data', e);
+        return structuredClone(defaultData);
+      }
+    }
+
+    function saveData(data) {
+      localStorage.setItem(getStorageKey(currentProject), JSON.stringify(data));
+      document.getElementById('saveStatus').textContent = `${currentProject} — ${new Date().toLocaleTimeString()}`;
+    }
+
+    // --- UI + Board Layer ---
+    let board = loadData();
+    const columns = document.querySelectorAll('.column');
+
+    // (rest of your original JS unchanged — card creation, render, add, move, edit, delete, drag, controls...)
+
+    function makeCard(text, id) {
+      const card = document.createElement('div');
+      card.className = 'card p-3 bg-slate-50 border border-slate-100 rounded-lg shadow-sm cursor-grab';
+      card.draggable = true;
+      card.dataset.id = id || crypto.randomUUID();
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="leading-tight text-slate-800">${escapeHtml(text)}</div>
+          <div class="flex items-center gap-1">
+            <button class="editBtn text-xs px-2 py-1 rounded bg-white border">Edit</button>
+            <button class="delBtn text-xs px-2 py-1 rounded bg-white border">Delete</button>
+          </div>
+        </div>`;
+
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', card.dataset.id);
+        e.dataTransfer.effectAllowed = 'move';
+        card.classList.add('opacity-70');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('opacity-70'));
+
+      card.querySelector('.editBtn').addEventListener('click', () => {
+        const newText = prompt('Edit feature', text);
+        if (newText == null) return;
+        updateCardText(card.dataset.id, newText.trim());
+      });
+
+      card.querySelector('.delBtn').addEventListener('click', () => {
+        if (!confirm('Delete this feature?')) return;
+        deleteCard(card.dataset.id);
+      });
+
+      return card;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    }
+
+    function render() {
+      columns.forEach(col => {
+        const cat = col.dataset.category;
+        const list = col.querySelector('div');
+        list.innerHTML = '';
+        board[cat].forEach(item => {
+          const card = makeCard(item.text, item.id);
+          list.appendChild(card);
+        });
+      });
+      saveData(board);
+    }
+
+    function addFeature(text, category = "Could Have") {
+      const newItem = { id: crypto.randomUUID(), text };
+      board[category].push(newItem);
+      render();
+    }
+
+    function findLocationById(id) {
+      for (const cat of Object.keys(board)) {
+        const idx = board[cat].findIndex(x => x.id === id);
+        if (idx !== -1) return { cat, idx };
+      }
+      return null;
+    }
+
+    function moveItem(id, targetCategory, targetIndex = null) {
+      const loc = findLocationById(id);
+      if (!loc) return;
+      const [item] = board[loc.cat].splice(loc.idx, 1);
+      if (targetIndex === null) board[targetCategory].push(item);
+      else board[targetCategory].splice(targetIndex, 0, item);
+      render();
+    }
+
+    function updateCardText(id, newText) {
+      const loc = findLocationById(id);
+      if (!loc) return;
+      board[loc.cat][loc.idx].text = newText;
+      render();
+    }
+
+    function deleteCard(id) {
+      const loc = findLocationById(id);
+      if (!loc) return;
+      board[loc.cat].splice(loc.idx, 1);
+      render();
+    }
+
+    columns.forEach(col => {
+      const list = col.querySelector('div');
+      col.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        col.classList.add('drag-over');
+      });
+      col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+      col.addEventListener('drop', (e) => {
+        e.preventDefault();
+        col.classList.remove('drag-over');
+        const id = e.dataTransfer.getData('text/plain');
+        const children = Array.from(list.children);
+        let insertAt = null;
+        const y = e.clientY;
+        for (let i = 0; i < children.length; i++) {
+          const r = children[i].getBoundingClientRect();
+          if (y < r.top + r.height / 2) { insertAt = i; break; }
+        }
+        moveItem(id, col.dataset.category, insertAt);
+      });
+    });
+
+    document.getElementById('addBtn').addEventListener('click', () => {
+      const val = document.getElementById('featureInput').value.trim();
+      if (!val) return document.getElementById('featureInput').focus();
+      addFeature(val, 'Could Have');
+      document.getElementById('featureInput').value = '';
+    });
+
+    document.getElementById('featureInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('addBtn').click();
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      if (!confirm('Clear the entire board? This cannot be undone.')) return;
+      Object.keys(board).forEach(k => board[k] = []);
+      render();
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const dataStr = JSON.stringify(board, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${currentProject}_moscow_board.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('importBtn').addEventListener('click', async () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = 'application/json';
+      input.onchange = () => {
+        const f = input.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            if (parsed['Must Have'] && parsed['Should Have'] && parsed['Could Have'] && parsed["Won't Have"]) {
+              Object.keys(board).forEach(k => board[k] = parsed[k] || []);
+              render();
+            } else alert('Invalid file format');
+          } catch (e) { alert('Failed to import: ' + e.message); }
+        };
+        reader.readAsText(f);
+      };
+      input.click();
+    });
+
+    (function init() {
+      populateProjectSelect();
+      board = loadData();
+      render();
+    })();
+  </script>
+</body>
+</html>
+
